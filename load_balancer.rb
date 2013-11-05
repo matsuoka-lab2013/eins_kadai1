@@ -1,16 +1,11 @@
-require "counter"
-require "logger"
 require "pio"
 
 class LoadBalancer < Controller
  def start
   @fdb = {}
   @server_list = {}
-  @counter = Counter.new
   @i=0
   @flag=true
-  @log = Logger.new('test.log', 7)
-  @log.level = Logger::DEBUG
  end
 
  def switch_ready(dpid)
@@ -18,8 +13,8 @@ class LoadBalancer < Controller
  end
 
  def packet_in(dpid, message)
-    @fdb[message.macsa] = message.in_port
-    port = @fdb[message.macda]
+  @fdb[message.macsa] = message.in_port
+  port = @fdb[message.macda]
   if message.arp_request?
    handle_arp_request(dpid, message)
   elsif message.arp_reply?
@@ -27,22 +22,20 @@ class LoadBalancer < Controller
   elsif message.ipv4?
    handle_ipv4(dpid, message, port)
     else
- if @flag==true
-   get_server_list( dpid ) 
+   if @flag==true
+    get_server_list(dpid) 
     @flag=false
    end
   end
-    @counter.add message.macsa, 1 , message.total_len
-
-end
+ end
 
  def flow_removed(dpid, message)
-   @counter.add message.match.dl_src, message.packet_count, message.byte_count
+
  end
 
  private
 
- def get_server_list( dpid )
+ def get_server_list(dpid)
    for i in 0..4
      last_number = 250 + i
      target_ip_addr = "192.168.0." + last_number.to_s
@@ -54,7 +47,7 @@ end
       send_packet_out(
         dpid,
         :data => arp_request_message.to_binary,
-        :actions => Trema::SendOutPort.new( OFPP_FLOOD )
+        :actions => Trema::SendOutPort.new(OFPP_FLOOD)
       )
    end
  end
@@ -67,7 +60,7 @@ end
   if @server_list[message.arp_spa.to_s]==nil
    @server_list[message.arp_spa.to_s] = message.arp_sha
    else
-   flood(dpid, message)
+   packet_out(dpid, message, OFPP_FLOOD)
   end
  end
 
@@ -75,7 +68,7 @@ end
   if port
     add_flow(dpid, message, port)
   else
-    flood(dpid, message)
+    packet_out(dpid, message, OFPP_FLOOD)
   end
  end
 
@@ -100,8 +93,8 @@ end
          Trema::SendOutPort.new(n_port)
                   ]
   )
-send_packet_out(dpid,:packet_in => message,
-:actions => [
+  send_packet_out(dpid,:packet_in => message,
+  :actions => [
          Trema::SetIpDstAddr.new(n_ip),
          Trema::SetEthDstAddr.new(n_mac),
          Trema::SendOutPort.new(n_port)
@@ -113,10 +106,9 @@ send_packet_out(dpid,:packet_in => message,
       :match => ExactMatch.from(message),
       :actions => Trema::SendOutPort.new(port)
      )
-   packet_out(dpid,message,port)
+   packet_out(dpid, message, port)
   end 
-end
-
+ end
  def packet_out(dpid, message, port)
    send_packet_out(
      dpid,
@@ -124,23 +116,5 @@ end
      :actions => Trema::SendOutPort.new(port)
      )
  end
-
- def flood(dpid, message)
-   send_packet_out(
-     dpid,
-     :packet_in => message,
-     :actions => Trema::SendOutPort.new(OFPP_FLOOD)
-   )
-
- end
-
- def create_action_from( macsa, macda, port )
-   [
-   SetEthSrcAddr.new( macsa ),
-   SetEthDstAddr.new( macda ),
-   SendOutPort.new( port )
-   ]
- end
-
 end
 
